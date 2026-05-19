@@ -181,10 +181,11 @@ with check (bucket_id = 'droptag-files');
 - Download button that increments `download_count` and opens the public file URL
 
 ## Screenshots
+<img width="1891" height="1097" alt="image" src="https://github.com/user-attachments/assets/16582336-6a0b-4116-a0db-31ced679f2be" />
 
 <img width="1917" height="1097" alt="image" src="https://github.com/user-attachments/assets/84b529f5-56f3-4d37-83e7-78ee8d151f3b" />
 
 
 ## Live Demo
 
-Cloudflare Pages URL: `https://your-project.pages.dev`
+Cloudflare Pages URL: `https://droptag.pages.dev/`

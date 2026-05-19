@@ -182,7 +182,8 @@ with check (bucket_id = 'droptag-files');
 
 ## Screenshots
 
-Add screenshots here after deploying or running the app locally.
+<img width="1917" height="1097" alt="image" src="https://github.com/user-attachments/assets/84b529f5-56f3-4d37-83e7-78ee8d151f3b" />
+
 
 ## Live Demo
 

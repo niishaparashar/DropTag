@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Upload, Settings, Lock, Clock, Trash2, Save, X } from 'lucide-react'
 import BackButton from '../components/BackButton'
 import FileGrid from '../components/FileGrid'
@@ -7,21 +7,25 @@ import SearchBar from '../components/SearchBar'
 import { useFilesByTag } from '../hooks/useSearch'
 import { useFileStore } from '../store/useFileStore'
 import { normalizeTag } from '../utils/formatters'
-import { getRoomSettings, setRoomSettings, isRoomVerified, markRoomVerified, clearRoomSettings, RoomSettings } from '../utils/roomSettings'
+import { clearRoomSettings, clearRoomVerified, getRoomSettings, isRoomVerified, markRoomVerified, RoomSettings, setRoomSettings } from '../utils/roomSettings'
+import { deleteRoom } from '../utils/adminCleanup'
 
 export default function TagPage() {
   const { tagName } = useParams()
+  const navigate = useNavigate()
   const normalizedTag = normalizeTag(tagName ?? '')
   const { files, loading, error } = useFilesByTag(normalizedTag)
   const setFiles = useFileStore((state) => state.setFiles)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [pinOpen, setPinOpen] = useState(false)
-  const [pinValue, setPinValue] = useState('')
+  const [settingsPinValue, setSettingsPinValue] = useState('')
+  const [unlockPinValue, setUnlockPinValue] = useState('')
   const [modalExpiry, setModalExpiry] = useState<string>('infinite')
   const [settingsState, setSettingsState] = useState<RoomSettings | null>(null)
   const [expired, setExpired] = useState(false)
   const [verified, setVerified] = useState(() => isRoomVerified(normalizedTag))
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [settingsError, setSettingsError] = useState<string | null>(null)
+  const [deletingRoom, setDeletingRoom] = useState(false)
 
   useEffect(() => {
     setFiles(files)
@@ -30,18 +34,19 @@ export default function TagPage() {
   useEffect(() => {
     if (!normalizedTag) return
     const s = getRoomSettings(normalizedTag)
+    const currentlyVerified = isRoomVerified(normalizedTag)
     setSettingsState(s)
+    setVerified(currentlyVerified)
     setExpired(Boolean(s?.expiresAt && new Date(s.expiresAt).getTime() < Date.now()))
-
-    if (s?.pin && !isRoomVerified(normalizedTag)) {
-      setPinOpen(true)
-    }
+    setUnlockPinValue('')
+    setErrorMessage(null)
   }, [normalizedTag])
 
   function openSettings() {
     setSettingsOpen(true)
     setErrorMessage(null)
-    setPinValue(settingsState?.pin ?? '')
+    setSettingsError(null)
+    setSettingsPinValue(settingsState?.pin ?? '')
     setModalExpiry(settingsState?.expiresAt ?? 'infinite')
   }
 
@@ -51,18 +56,52 @@ export default function TagPage() {
     setRoomSettings(normalizedTag, next)
     setSettingsState(next)
     setSettingsOpen(false)
-    // if pin removed, clear verified state
+
+    // If PIN is removed or changed, force a fresh verification flow.
     if (!pin) {
-      // no-op for sessionStorage removal — keep it simple
+      clearRoomVerified(normalizedTag)
+      setVerified(true)
+      setUnlockPinValue('')
+      setErrorMessage(null)
+      return
+    }
+
+    clearRoomVerified(normalizedTag)
+    setVerified(false)
+    setUnlockPinValue('')
+    setErrorMessage(null)
+  }
+
+  async function handleDeleteRoom() {
+    if (!normalizedTag || deletingRoom) return
+
+    const confirmed = window.confirm(`Delete the entire #${normalizedTag} room? This removes its files and cannot be undone.`)
+    if (!confirmed) return
+
+    const adminToken = window.prompt('Enter the admin delete token to continue')?.trim()
+    if (!adminToken) return
+
+    setDeletingRoom(true)
+    setSettingsError(null)
+
+    try {
+      await deleteRoom(normalizedTag, adminToken)
+      clearRoomSettings(normalizedTag)
+      setSettingsOpen(false)
+      navigate('/')
+    } catch (caught) {
+      setSettingsError(caught instanceof Error ? caught.message : 'Failed to delete the room.')
+    } finally {
+      setDeletingRoom(false)
     }
   }
 
   function handleVerifyPin() {
     if (!settingsState?.pin) return
-    if (pinValue === settingsState.pin) {
+    if (unlockPinValue.trim() === settingsState.pin) {
       markRoomVerified(normalizedTag)
       setVerified(true)
-      setPinOpen(false)
+      setUnlockPinValue('')
       setErrorMessage(null)
     } else {
       setErrorMessage('Incorrect PIN')
@@ -130,8 +169,8 @@ export default function TagPage() {
               <div>
                 <label className="mb-2 block text-sm font-medium text-zinc-200">PIN (optional)</label>
                 <input
-                  value={pinValue}
-                  onChange={(e) => setPinValue(e.target.value)}
+                  value={settingsPinValue}
+                  onChange={(e) => setSettingsPinValue(e.target.value)}
                   placeholder="Set a numeric PIN or leave blank"
                   className="w-full rounded-md border border-white/10 bg-black/10 px-3 py-2 text-white outline-none"
                 />
@@ -155,6 +194,17 @@ export default function TagPage() {
                 <div className="flex gap-2">
                   <button
                     type="button"
+                    onClick={() => {
+                      void handleDeleteRoom()
+                    }}
+                    disabled={deletingRoom}
+                    className="inline-flex items-center gap-2 rounded-full border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {deletingRoom ? 'Deleting...' : 'Delete room'}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setSettingsOpen(false)}
                     className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/5"
                   >
@@ -164,7 +214,7 @@ export default function TagPage() {
                     type="button"
                     onClick={() => {
                       const expiresAt = modalExpiry === 'infinite' ? null : new Date(Date.now() + Number(modalExpiry)).toISOString()
-                      const pin = pinValue.trim() === '' ? null : pinValue.trim()
+                      const pin = settingsPinValue.trim() === '' ? null : settingsPinValue.trim()
                       saveSettings({ expiresAt, pin })
                     }}
                     className="inline-flex items-center gap-2 rounded-full bg-emerald-400 px-4 py-2 text-sm font-semibold text-black"
@@ -174,25 +224,27 @@ export default function TagPage() {
                   </button>
                 </div>
               </div>
+
+              {settingsError ? <p className="text-sm text-red-300">{settingsError}</p> : null}
             </div>
           </div>
         </div>
       ) : null}
 
       {/* PIN gate */}
-      {settingsState?.pin && !verified && pinOpen ? (
+      {settingsState?.pin && !verified ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-md rounded-2xl bg-panel p-6">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-white">Enter room PIN</h3>
-              <button onClick={() => setPinOpen(false)} className="text-zinc-400 hover:text-white">
+              <button onClick={() => navigate('/')} className="text-zinc-400 hover:text-white" title="Go back home">
                 <X className="h-5 w-5" />
               </button>
             </div>
             <p className="mb-4 text-sm text-zinc-400">This room is PIN-protected. Enter the PIN to join.</p>
             <input
-              value={pinValue}
-              onChange={(e) => setPinValue(e.target.value)}
+              value={unlockPinValue}
+              onChange={(e) => setUnlockPinValue(e.target.value)}
               placeholder="Enter PIN"
               className="w-full rounded-md border border-white/10 bg-black/10 px-3 py-2 text-white outline-none"
             />

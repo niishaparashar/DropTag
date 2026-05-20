@@ -29,6 +29,12 @@ export function markRoomVerified(tag: string) {
   } catch {}
 }
 
+export function clearRoomVerified(tag: string) {
+  try {
+    sessionStorage.removeItem(PREFIX + 'verified:' + tag)
+  } catch {}
+}
+
 export function isRoomVerified(tag: string) {
   try {
     return sessionStorage.getItem(PREFIX + 'verified:' + tag) === '1'

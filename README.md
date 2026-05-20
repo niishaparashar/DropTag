@@ -59,6 +59,13 @@ VITE_SUPABASE_URL=your-supabase-url
 VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
 ```
 
+If you want the admin delete action in the room settings modal, add these secret variables to the Pages function environment as well:
+
+```bash
+SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
+ADMIN_DELETE_TOKEN=your-admin-delete-token
+```
+
 ### 4) Deploy
 
 Cloudflare Pages will build and publish the app automatically on every push.
@@ -179,6 +186,7 @@ with check (bucket_id = 'droptag-files');
 - Responsive file grid with loading skeletons and empty states
 - Trending tags from file associations in the last 7 days
 - Download button that increments `download_count` and opens the public file URL
+- Admin-only room deletion through a server-side cleanup endpoint
 
 ## Screenshots
 <img width="1891" height="1097" alt="image" src="https://github.com/user-attachments/assets/16582336-6a0b-4116-a0db-31ced679f2be" />
